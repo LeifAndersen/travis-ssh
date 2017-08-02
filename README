@@ -1,0 +1,14 @@
+travis-ssh
+==========
+
+This is a simple script to activate a debug build in travis.
+
+Remember to email support@travis-ci.org to activate the repo first.
+
+Usage:
+
+travis-ssh <user>/<repo-name>
+
+For example, if you have access to the video repository:
+
+travis-ssh videolang/video

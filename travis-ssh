@@ -1,0 +1,66 @@
+#!/usr/bin/env racket
+#lang at-exp racket
+
+(require racket/cmdline)
+
+(define curl (find-executable-path "curl"))
+(define travis (find-executable-path "travis"))
+
+(define repo
+  (command-line #:args (repo) repo))
+
+(displayln "Grabbing Token...")
+
+(define token-str
+  (with-output-to-string
+      (λ ()
+        (system* travis "token" "--org"))))
+(define maybe-token
+  (regexp-match "([^\n]*)\n" token-str))
+
+(unless maybe-token
+  (displayln "Error: could not find travis token.")
+  (displayln "Did you authenticate with: `travis login --org`?"))
+
+(define token (cadr maybe-token))
+
+(printf "Found token: ~a~n" token)
+
+(displayln "Getting Job id...")
+
+(define-values (proc in out err)
+  (subprocess #f #f #f travis "logs" "-r" repo))
+
+(define job
+  (for/fold ([job #f])
+            ([line (in-lines in)]
+             #:break job)
+    (define job-line (regexp-match "Job id: ([0-9]*)" line))
+    (and job-line
+         (cadr job-line))))
+
+(printf "Job id: ~a~n" job)
+(displayln "Starting debug build...")
+
+(match-define (list ret-in _ _ _ _)
+  (process
+   @~a{curl -s -X POST \
+ -H "Content-Type: application/json" \
+ -H "Accept: application/json" \
+ -H "Travis-API-Version: 3" \
+ -H "Authorization: token @|token|" \
+ -d "{\"quiet\": true}" \
+ https://api.travis-ci.org/job/@|job|/debug}))
+
+(define failed?
+  (for/fold ([failed #f])
+            ([line (in-lines ret-in)]
+             #:break failed)
+    (regexp-match @~a{"error_type": "job_already_running"} line)))
+
+(when failed?
+  (displayln "Warning: Job currently running"))
+
+(displayln "Searching for ssh command (Ctr+c once displayed) ...")
+
+(system* travis "logs" "-r" repo)
